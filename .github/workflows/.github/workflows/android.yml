@@ -1,0 +1,72 @@
+name: Generar APK Horas Extras
+
+on:
+  workflow_dispatch:
+
+jobs:
+  android:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+
+    steps:
+      - name: Descargar el codigo del repositorio
+        uses: actions/checkout@v4
+
+      - name: Instalar Maven 3.8.8
+        uses: stCarolas/setup-maven@v5.1
+        with:
+          maven-version: '3.8.8'
+
+      - name: Preparar GraalVM de Gluon
+        uses: gluonhq/setup-graalvm@master
+        with:
+          graalvm: '22.1.0.1-Final'
+          jdk: 'java17'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Instalar librerias para compilacion
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libavcodec-dev libavformat-dev libavutil-dev libgl-dev libgtk-3-dev libpango1.0-dev libxtst-dev
+
+      - name: Verificar Java y Maven
+        run: |
+          java -version
+          mvn --version
+
+      - name: Construir y empaquetar APK Android
+        run: |
+          unset ANDROID_SDK_ROOT
+          mvn -B -Pandroid clean gluonfx:build gluonfx:package
+
+      - name: Mostrar errores detallados de Gluon
+        if: failure()
+        run: |
+          echo "Buscando registros del error..."
+          if [ -d target/gluonfx ]; then
+            find target/gluonfx -type f -name '*.log' -print | while IFS= read -r archivo; do
+              echo "========== $archivo =========="
+              tail -n 120 "$archivo"
+            done
+          else
+            echo "No se encontraron registros de Gluon."
+          fi
+
+      - name: Guardar registros de errores
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: registros-gluon-horasextras
+          path: |
+            target/gluonfx/log/
+            target/gluonfx/aarch64-android/gvm/log/
+          if-no-files-found: warn
+
+      - name: Guardar APK para descargar
+        uses: actions/upload-artifact@v4
+        with:
+          name: HorasExtras-APK
+          path: target/gluonfx/aarch64-android/gvm/*.apk
+          if-no-files-found: error
